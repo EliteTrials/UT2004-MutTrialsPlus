@@ -2,9 +2,9 @@
 // MNAF_Pawn.uc
 // MutNoAutoFire (C) 2006-2009 Eliot van uytfanghe, .:..:. All Rights Reserved.
 //==============================================================================
-Class MNAF_Pawn extends xPawn;
+class MNAF_Pawn extends xPawn;
 
-#Exec obj load file="MutNoAF.utx" package="MutTrialsPlus"
+#exec obj load file="MutNoAF.utx" package="MutTrialsPlus"
 
 const MaxSuicideMsgLen = 255;
 
@@ -66,9 +66,10 @@ replication
 }
 
 // 'SetAnimAction' where ALL anims will be played on client side.
+// Fix by .:..:
 simulated event SetAnimAction(name NewAction)
 {
-	Super.SetAnimAction(NewAction);
+	super.SetAnimAction(NewAction);
 	AnimAction = '';
 	if( Level.NetMode!=NM_Client )
 	{
@@ -80,38 +81,28 @@ simulated event SetAnimAction(name NewAction)
 	}
 }
 
-simulated function PlayAnimOnClient( name AnimName )
+// Fix by .:..:
+simulated function PlayAnimOnClient(name AnimName)
 {
-	if( Level.NetMode == NM_Client )
-		SetAnimAction( AnimName );
+	if( Level.NetMode==NM_Client )
+		SetAnimAction(AnimName);
 }
 
-/*Function PossessedBy( Controller C )
+simulated function PostNetBeginPlay()
 {
-	Super.PossessedBy(C);
-	// Hack for PostNetBeginPlay and PostNetReceive
-	if( Level.NetMode == NM_StandAlone )
-	{
-		InitPawn();
-		InitEffects();
-	}
-}*/
-
-Simulated Function PostNetBeginPlay()
-{
-	Super.PostNetBeginPlay();
-	bMayUpdateAction = True;
+	super.PostNetBeginPlay();
+	bMayUpdateAction = true;
 	ActionAnimRep.AnimCounter = 0;
 
 	InitPawn();
 
+	// FIXME: Nasty solution, forces the player to switch to the ShieldGun as opposed to the Assault Rifle.
 	SwitchWeapon( 1 );	// ShieldGun
 }
 
-Simulated Function InitPawn()
+simulated function InitPawn()
 {
 	local string S;
-	local LinkedReplicationInfo L;
 	local MNAFSavedData MD;
 
 	if( Controller != None )
@@ -120,15 +111,7 @@ Simulated Function InitPawn()
 		bShouldUseFadeSk = False;
 		if( PlayerReplicationInfo != None )
 		{
-			for( L = PlayerReplicationInfo.CustomReplicationInfo; L != None; L = L.NextReplicationInfo )
-			{
-				if( MNAFLinkedRep(L) != None )
-				{
-					MLR = MNAFLinkedRep(L);
-					break;
-				}
-			}
-
+			MLR = GetRep(PlayerReplicationInfo);
 			// Send my configuration to the server, (Make sure only the local owner does this!)
 			if( MLR != None && Level.NetMode != NM_DedicatedServer && TheLocalPC == Controller )
 			{
@@ -156,8 +139,6 @@ simulated event Tick( float DeltaTime )
 	local vector HR;
 
 	super.Tick( DeltaTime );
-//	Velocity = Velocity * ((Acceleration * AccelRate) * DeltaTime);
-
 	if( Level.NetMode != NM_DedicatedServer )
 	{
 		// Apply RainBowSkin
@@ -323,29 +304,30 @@ simulated function Destroyed()
 		Level.ObjectPool.FreeObject( SMat2 );
 		SMat2 = None;
 	}
-	Super.Destroyed();
+	super.Destroyed();
 }
 
-Simulated Function InitEffects()
+static function MNAFLinkedRep GetRep( PlayerReplicationInfo PRI )
 {
-	local LinkedReplicationInfo L;
+	local LinkedReplicationInfo LRI;
 
+	for( LRI = PRI.CustomReplicationInfo; LRI != none; LRI = LRI.NextReplicationInfo )
+	{
+		if( MNAFLinkedRep(LRI) != none )
+		{
+			return MNAFLinkedRep(LRI);
+		}
+	}
+	return none;
+}
+
+simulated function InitEffects()
+{
 	if( PlayerReplicationInfo == None )
 		return;
 
-	if( MLR == None )
-	{
-		for( L = PlayerReplicationInfo.CustomReplicationInfo; L != None; L = L.NextReplicationInfo )
-		{
-			if( MNAFLinkedRep(L) != None )
-			{
-				MLR = MNAFLinkedRep(L);
-				break;
-			}
-		}
-	}
-
-	if( MLR != None && Level.NetMode != NM_DedicatedServer && !bPawnUpdated )
+	MLR = GetRep( PlayerReplicationInfo );
+	if( MLR != none && Level.NetMode != NM_DedicatedServer && !bPawnUpdated )
 	{
 		if( MLR.RBSOn() )
 			bFadingSkin = True;
@@ -357,7 +339,6 @@ Simulated Function InitEffects()
  			aPR = Spawn( Class'PinkRings_mini', Self );
  			AttachToBone( aPR, 'rfarm' );
 		}
-
 		bPawnUpdated = True;
 	}
 
@@ -366,37 +347,32 @@ Simulated Function InitEffects()
 		if( !bAppliedPRI )
 		{
 			TheLocalPC = Level.GetLocalPlayerController();
-			if( PlayerReplicationInfo!=None && TheLocalPC.PlayerReplicationInfo!=None && PlayerReplicationInfo.Team!=None &&
-			 TheLocalPC.PlayerReplicationInfo.Team!=None )
+			if( PlayerReplicationInfo!=none && TheLocalPC.PlayerReplicationInfo!=none
+				&& PlayerReplicationInfo.Team!=none
+				&& TheLocalPC.PlayerReplicationInfo.Team!=none )
 			{
 				bAppliedPRI = True;
-				if( Controller==None && PlayerReplicationInfo.Team==TheLocalPC.PlayerReplicationInfo.Team )
+				if( Controller==none && PlayerReplicationInfo.Team==TheLocalPC.PlayerReplicationInfo.Team )
 				{
-					For( L=TheLocalPC.PlayerReplicationInfo.CustomReplicationInfo; L!=None; L=L.NextReplicationInfo )
+					if( MLR != none && MLR.bFadeOutTeamMates )
 					{
-						if( MNAFLinkedRep(L)!=None && MNAFLinkedRep(L).bFadeOutTeamMates )
-						{
-							bTeamMatesFading = True;
-							bShouldUseFadeSk = True;
-							Break;
-						}
+						bTeamMatesFading = true;
+						bShouldUseFadeSk = true;
 					}
 				}
 			}
 		}
-		else if( bShouldUseFadeSk && PlayerReplicationInfo!=None && TheLocalPC.PlayerReplicationInfo!=None && PlayerReplicationInfo.Team!=None )
+		else if( bShouldUseFadeSk && PlayerReplicationInfo!=none && TheLocalPC.PlayerReplicationInfo!=none && PlayerReplicationInfo.Team!=none )
 			bTeamMatesFading = (PlayerReplicationInfo.Team==TheLocalPC.PlayerReplicationInfo.Team);
 	}
 }
 
 // Fix some things regarding characters
-// Called on all clients when something was replicated, Check here whether the owner of this pawn has some options enabled and if so we spawn that eye-candy!.
-Simulated Function PostNetReceive()
+simulated function PostNetReceive()
 {
-	local string Char;
+	local string charName;
 
 	InitEffects();
-
 	if( bMayUpdateAction && ActionAnimRep.AnimCounter!=0 )
 	{
 		ActionAnimRep.AnimCounter = 0;
@@ -404,16 +380,15 @@ Simulated Function PostNetReceive()
 	}
 
 	if ( PlayerReplicationInfo != None )
-		Char = PlayerReplicationInfo.CharacterName;
+		charName = PlayerReplicationInfo.CharacterName;
 	else if ( (DrivenVehicle != None) && (DrivenVehicle.PlayerReplicationInfo != None) )
-		Char = DrivenVehicle.PlayerReplicationInfo.CharacterName;
+		charName = DrivenVehicle.PlayerReplicationInfo.CharacterName;
 
-	if( Len(Char)>0 && Char!=OldCharacterName )
+	if( Len(charName)>0 && charName!=OldCharacterName )
 	{
-		OldCharacterName = Char;
-		Setup( class'xUtil'.static.FindPlayerRecord( Char ) );
+		OldCharacterName = charName;
+		Setup( class'xUtil'.static.FindPlayerRecord( charName ) );
 	}
-	//Super.PostNetReceive();
 }
 
 simulated function bool ForceDefaultCharacter()
@@ -426,24 +401,24 @@ simulated function bool ForceDefaultCharacter()
 // And some with the gibbing
 simulated function PlayDyingAnimation(class<DamageType> DamageType, vector HitLoc)
 {
-	if( Level.NetMode==NM_Client && DamageType!=None && DamageType.default.bAlwaysGibs )
+	if( Level.NetMode==NM_Client && DamageType!=none && DamageType.default.bAlwaysGibs && !bGibbed )
 		ChunkUp( Rotation, DamageType.default.GibPerterbation );
-	else Super.PlayDyingAnimation(DamageType,HitLoc);
+	else super.PlayDyingAnimation(DamageType,HitLoc);
 }
 
-Function Suicide() /* Eliot */
+function Suicide()
 {
 	Health = 0;
 	Died( Controller, Class'MNAF_Suicided', Location );
 }
 
-Function TakeDrowningDamage() /* Eliot */
+function TakeDrowningDamage()
 {
 	if( DrownDamage > 0 )
 		TakeDamage( DrownDamage, None, Location + CollisionHeight * vect(0,0,0.5)+ 0.7 * CollisionRadius * vector(Controller.Rotation), vect(0,0,0), Class'GamePlay.Drowned' );
 }
 
-Simulated Exec Function SetSuicideMessage( string SuicideSTR ) /* Eliot */
+simulated exec function SetSuicideMessage( string SuicideSTR )
 {
 	local MNAFSavedData MD;
 
@@ -471,11 +446,6 @@ Simulated Exec Function SetSuicideMessage( string SuicideSTR ) /* Eliot */
 // New Custom Suicide Message
 function ServerApplyNewMsg( string ScdMsg ) /* Eliot */
 {
-	local LinkedReplicationInfo L;
-
-	if( Level.NetMode == NM_Client )
-		return;
-
     if( PlayerReplicationInfo==None )
 		return;
 
@@ -487,47 +457,23 @@ function ServerApplyNewMsg( string ScdMsg ) /* Eliot */
 	if( InStr(ScdMsg,"%o") == -1 )
 		return;
 
-	if( MLR != None )
-		MLR.CustomScdMsg = MLR.ReplaceWithTags( ScdMsg );
-	else
-	{
-		for( L=PlayerReplicationInfo.CustomReplicationInfo; L!=None; L=L.NextReplicationInfo )
-		{
-			if( MNAFLinkedRep(L) != None )
-			{
-				MLR = MNAFLinkedRep(L);
-				MLR.CustomScdMsg = MLR.ReplaceWithTags( ScdMsg );
-			}
-		}
-	}
+	MLR = GetRep(PlayerReplicationInfo);
+	if( MLR == None )
+		return;
+
+	MLR.CustomScdMsg = MLR.ReplaceWithTags( ScdMsg );
 }
 
-Simulated Exec Function GetCurrentSuicideMsg() /* Eliot */
+simulated exec function GetCurrentSuicideMsg() /* Eliot */
 {
 	if( TheLocalPC != None )
 		TheLocalPC.CopyToClipBoard( Class'MNAFSavedData'.Static.FindSavedData().MySuicideMsg );
 }
 
 // ShieldArmor hit material
-Function ServerChangeHitMat( bool bEnabled ) /* Eliot */
+function ServerChangeHitMat( bool bEnabled ) /* Eliot */
 {
-	local LinkedReplicationInfo L;
-
-	if( Level.NetMode == NM_Client )
-		return;
-
-	if( MLR == None )
-	{
-		for( L=PlayerReplicationInfo.CustomReplicationInfo; L!=None; L=L.NextReplicationInfo )
-		{
-			if( MNAFLinkedRep(L) != None )
-			{
-				MLR = MNAFLinkedRep(L);
-				break;
-			}
-		}
-	}
-
+	MLR = GetRep(PlayerReplicationInfo);
 	if( MLR == None )
 		return;
 
@@ -540,25 +486,9 @@ Function ServerChangeHitMat( bool bEnabled ) /* Eliot */
 }
 
 // Rainbow Skin
-Function ServerRBS( bool bEnabled )
+function ServerRBS( bool bEnabled )
 {
-	local LinkedReplicationInfo L;
-
-	if( Level.NetMode == NM_Client )
-		return;
-
-	if( MLR == None )
-	{
-		for( L=PlayerReplicationInfo.CustomReplicationInfo; L!=None; L=L.NextReplicationInfo )
-		{
-			if( MNAFLinkedRep(L) != None )
-			{
-				MLR = MNAFLinkedRep(L);
-				break;
-			}
-		}
-	}
-
+	MLR = GetRep(PlayerReplicationInfo);
 	if( MLR == None )
 		return;
 
@@ -570,25 +500,9 @@ Function ServerRBS( bool bEnabled )
 }
 
 // Pink Rings
-Function ServerPR( bool bEnabled )
+function ServerPR( bool bEnabled )
 {
-	local LinkedReplicationInfo L;
-
-	if( Level.NetMode == NM_Client )
-		return;
-
-	if( MLR == None )
-	{
-		for( L=PlayerReplicationInfo.CustomReplicationInfo; L!=None; L=L.NextReplicationInfo )
-		{
-			if( MNAFLinkedRep(L) != None )
-			{
-				MLR = MNAFLinkedRep(L);
-				break;
-			}
-		}
-	}
-
+	MLR = GetRep(PlayerReplicationInfo);
 	if( MLR == None )
 		return;
 
@@ -599,15 +513,15 @@ Function ServerPR( bool bEnabled )
 }
 
 // Make sure suicided is always using our custom suicided class for the custom suicide message feature!
-Function Died(Controller Killer, class<DamageType> DamageType, vector HitLocation) /* Eliot */
+function Died(Controller Killer, class<DamageType> DamageType, vector HitLocation) /* Eliot */
 {
      if( DamageType == Class'Suicided' )
           DamageType = Class'MNAF_Suicided';
-     Super.Died(Killer,DamageType,HitLocation);
+     super.Died(Killer,DamageType,HitLocation);
 }
 
 // Anti-TeamSwitch team killing!
-Function PlayerChangedTeam() /* Eliot */
+function PlayerChangedTeam() /* Eliot */
 {
 	local Inventory Inv;
 	local Projectile Proj;
@@ -633,7 +547,7 @@ Function PlayerChangedTeam() /* Eliot */
 			Proj.Destroy();
 	}
 
-	Super.PlayerChangedTeam();
+	super.PlayerChangedTeam();
 }
 
 exec function TimeDodge()
@@ -683,39 +597,35 @@ function bool DoJump( bool bUpdating )
 	else LastJumpTime = Level.TimeSeconds;
 }
 
+/**
+ * This parent overwrite, solves the following issues:
+ * - Set a LastLandedTime so that we can block dodge cheats, this let's us measure whether a dodge is valid on the server's side.
+ * - The landing sound was not always played, and because players use this sound to time their next dodge move, we had ensure that it is always being played.
+ */
 event Landed( Vector v )
 {
-	// Pre-Jump like in Quake 3 etc
-	if( PlayerController(Controller) != none && (Level.TimeSeconds - LastJumpTime) <= 0.2f )
-	{
-		PlayerController(Controller).bPressedJump = true;
-	}
-
 	super(UnrealPawn).Landed(v);
+    MultiJumpRemaining = MaxMultiJump;
+
 	if( bDidDodge )
 	{
 		LastLandedTime = Level.TimeSeconds;
 		bDidDodge = False;
 	}
 
-	// From Parent class
-    MultiJumpRemaining = MaxMultiJump;
-
- 	// Removed Splash Time(xPawn Code!)
  	if( Health <= 0 || bHidden )
  		return;
 
  	// Change: Overwrite sound TRUE (so that landing sound will always be played!)
     PlayOwnedSound( GetSound( EST_Land ), SLOT_Interact, FMin( 1, -0.3 * Velocity.Z / JumpZ ), True );
-    // ...
 }
 
-Function PlayMoverHitSound()
+function PlayMoverHitSound()
 {
 	PlaySound( SoundGroupClass.Static.GetHitSound(), SLOT_Interact, 1.0*TransientSoundVolume, True );
 }
 
-Simulated Exec Function TogglePlayDirectionalHit()
+simulated exec function TogglePlayDirectionalHit()
 {
 	local MNAFSavedData MD;
 
@@ -727,18 +637,18 @@ Simulated Exec Function TogglePlayDirectionalHit()
 	}
 }
 
-Simulated Function PlayDirectionalHit( Vector HitLoc )
+simulated function PlayDirectionalHit( Vector HitLoc )
 {
 	local MNAFSavedData MD;
 
 	MD = Class'MNAFSavedData'.Static.FindSavedData();
 	if( MD != None && MD.bPlayDirectionalHits )
-		Super.PlayDirectionalHit(HitLoc);
+		super.PlayDirectionalHit(HitLoc);
 }
 
 // Doesn't seem to work!
 // Overwritten to replace weapons given by Volumes etc...
-/*Function GiveWeapon( string NewWeapon )
+/*function GiveWeapon( string NewWeapon )
 {
 	local string ShortName;
 
@@ -754,54 +664,54 @@ Simulated Function PlayDirectionalHit( Vector HitLoc )
 	else if( ShortName ~= "ADShieldGun" )
 		NewWeapon = string( Class'ADShieldGunFix' );
 
-	Super.GiveWeapon(NewWeapon);
+	super.GiveWeapon(NewWeapon);
 }*/
 
 // Doesn't seem to work!
 // Overwritten to replace weapons given by Volumes etc...
-/*Function bool AddInventory( inventory NewItem )
+/*function bool AddInventory( inventory NewItem )
 {
 	local string ShortName;
 
 	if( !NewItem.IsA('Weapon') )
-		return Super.AddInventory(NewItem);
+		return super.AddInventory(NewItem);
 
 	ShortName = Mid( NewItem.Name, InStr( NewItem.Name, "." )+1 );
 	if( ShortName ~= "AssaultRifle" || ShortName ~= "TFAssaultRifle" )
 	{
 		NewItem.Destroy();
 		NewItem = Spawn( Class'AssaultRifleFix', Self );
-		return Super.AddInventory(NewItem);
+		return super.AddInventory(NewItem);
 	}
 	else if( ShortName ~= "ShieldGun" )
 	{
 		NewItem.Destroy();
 		NewItem = Spawn( Class'ShieldGunFix', Self );
-		return Super.AddInventory(NewItem);
+		return super.AddInventory(NewItem);
 	}
 	else if( ShortName ~= "DMShieldGun" )
 	{
 		NewItem.Destroy();
 		NewItem = Spawn( Class'DMShieldGunFix', Self );
-		return Super.AddInventory(NewItem);
+		return super.AddInventory(NewItem);
 	}
 	else if( ShortName ~= "ADShieldGun" )
 	{
 		NewItem.Destroy();
 		NewItem = Spawn( Class'ADShieldGunFix', Self );
-		return Super.AddInventory(NewItem);
+		return super.AddInventory(NewItem);
 	}
 	else if( ShortName ~= "BioRifle" )
 	{
 		NewItem.Destroy();
 		NewItem = Spawn( Class'BioRifleFix', Self );
-		return Super.AddInventory(NewItem);
+		return super.AddInventory(NewItem);
 	}
-	else return Super.AddInventory(NewItem);
+	else return super.AddInventory(NewItem);
 }*/
 
 // Copy from UnrealPawn, Reason:Remove ClientSwitchToBestWeapon();
-Function AddDefaultInventory()
+function AddDefaultInventory()
 {
 	local int i;
 
@@ -822,7 +732,7 @@ Function AddDefaultInventory()
 	SwitchWeapon( 1 );	// ShieldGun
 }
 
-DefaultProperties
+defaultproperties
 {
 	DodgeResetTime=0.40
 	AntiMGDistance=30
