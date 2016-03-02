@@ -44,8 +44,8 @@ var protected MNAFLinkedRep MLR;
 var protected PinkRings_mini aPR;
 
 var float LastJumpTime;
-
-var globalconfig float AntiMDDelay;
+var() bool bDebugDodgeTiming;
+var() const float DodgeResetTime;
 var globalconfig int AntiMGDistance;
 
 replication
@@ -57,11 +57,12 @@ replication
 	reliable if( Role == ROLE_Authority )
 		PlayAnimOnClient;
 
-	reliable if( Role < ROLE_Authority && bNetOwner )
+	reliable if( Role < ROLE_Authority )
 		ServerApplyNewMsg,
 		ServerChangeHitMat,
 		ServerRBS,
-		ServerPR;
+		ServerPR,
+		ServerTimeDodge;
 }
 
 // 'SetAnimAction' where ALL anims will be played on client side.
@@ -635,16 +636,42 @@ Function PlayerChangedTeam() /* Eliot */
 	Super.PlayerChangedTeam();
 }
 
-// Anti-MultiDodge hack
-Function bool Dodge( eDoubleClickDir DoubleClickMove ) /* Eliot */
+exec function TimeDodge()
 {
-	// MultiDodge Check
-	if( PlayerController(Controller).DoubleClickDir == DCLICK_Active || (PlayerController(Controller).DoubleClickDir == DCLICK_Done && (Level.TimeSeconds - LastLandedTime) < AntiMDDelay) )
-    	return False;
+	bDebugDodgeTiming = !bDebugDodgeTiming;
+	ServerTimeDodge( bDebugDodgeTiming );
+}
 
-    bDidDodge = True;
+exec function ServerTimeDodge( bool bTime )
+{
+	bDebugDodgeTiming = bTime;
+}
+
+// Anti-MultiDodge hack
+function bool Dodge( eDoubleClickDir DoubleClickMove ) /* Eliot */
+{
+	local float time;
+
+	time = (Level.TimeSeconds - LastLandedTime)/Level.TimeDilation;
+	if( bDebugDodgeTiming )
+	{
+		ClientMessage(
+			"Dodge Time"
+			@ GetEnum( enum'ENetMode', Level.Netmode )
+			@ time*100f
+			@ GetEnum( enum'EDoubleClickDir', PlayerController(Controller).DoubleClickDir )
+		);
+	}
+
+	// MultiDodge Check
+	if( PlayerController(Controller).DoubleClickDir == DCLICK_Active || (PlayerController(Controller).DoubleClickDir != DCLICK_None && time < DodgeResetTime) )
+	{
+    	return false;
+	}
+
+    bDidDodge = true;
 	PlayerController(Controller).DoubleClickDir = DoubleClickMove;
-	return Super.Dodge(DoubleClickMove);
+	return super.Dodge(DoubleClickMove);
 }
 
 function bool DoJump( bool bUpdating )
@@ -797,14 +824,6 @@ Function AddDefaultInventory()
 
 DefaultProperties
 {
-/*	bFunTrialMode=True
-		LandCount=1
-		MaxLandCount=6
-		DecrementTime=0.3
-		Boost=1.0
-		BoostDivide=10
-		KeepSpeedDelay=0.2*/
-
-	AntiMDDelay=0.45
+	DodgeResetTime=0.40
 	AntiMGDistance=30
 }
