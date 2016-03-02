@@ -67,7 +67,22 @@ final Function bool IsMember( PlayerController PC )
 	return PrivData.IsMember( PC );
 }
 
-Event PostBeginPlay()
+event PreBeginPlay()
+{
+	local Mutator m;
+
+	super.PreBeginPlay();
+	foreach DynamicActors( class'Mutator', m )
+	{
+		if( m.IsA('TFAEmbed') || m.IsA('MayanTFAEmbed') )
+		{
+			m.Destroy();
+			break;
+		}
+	}
+}
+
+event PostBeginPlay()
 {
 	local string S;
 
@@ -84,24 +99,8 @@ Event PostBeginPlay()
 	if( PrivData.Author1 != "2e216ede3cf7a275764b04b5ccdd005d" )
 		Destroy();
 
- 	Super.PostBeginPlay();
-
-	// Assuming BestTimes is initialized before us!
-	/*for( M = Level.Game.BaseMutator; M != None; M = M.NextMutator )
-	{
-		if( M.IsA('BTimesMute') )
-		{
-			S = M.GetPropertyText( "A12330" );
-			if( S != "" && float(S) <= 2.91 )
-			{
-				bNoCustomPickupsRespawnCode = True;
-				Log( "Pickups will not be rapidly respawned because the server is using an older version of BestTimes that already handles this feature itself", Name );
-			}
-		}
-	}*/
-
+ 	super.PostBeginPlay();
 	bInsaneMap = InsaneMap();
-	//SetTimer( 10, True );
 
 	MyBCH = Spawn( Class'MNAFBroadCastHandler' );
 	MyBCH.NextBroadcastHandler = Level.Game.BroadcastHandler;
@@ -385,14 +384,6 @@ Function Mutate( string TypedCommand, PlayerController PC )
 				SaveConfig();
 				return;
 			}
-			/*else if( TypedCommand ~= "ReplacePawn" )
-			{
-				bFixPawnNetCode = bFixPawnNetCode;
-				PC.ClientMessage( "ReplacePawn"@bFixPawnNetCode );
-				PC.ClientMessage( "Saved: MutNoAutoFire.ini" );
-				SaveConfig();
-				return;
-			}*/
 			else if( Left( TypedCommand, 15 ) ~= "SetSuicideDelay" )
 			{
 				if( float( Mid( TypedCommand, 16 ) ) < 0.0 )
@@ -639,6 +630,12 @@ Function bool CheckReplacement( Actor Other, out byte bSuperRelevant )
 		}
 		return True;
 	}
+	// TFAMap.u is no longer relevant, we should make sure all such instances are removed from the game.
+	// TFAEmbed does also not call the NextMutator events which may break mutators that are dependant on such events.
+	else if( Other.IsA('TFAEmbed') || Other.IsA('MayanTFAEmbed') )
+	{
+		return false;
+	}
 	return Super.CheckReplacement(Other,bSuperRelevant);
 }
 
@@ -780,9 +777,6 @@ Static Event string GetDescriptionText( string PropName )
 		case "bInfinityBioRifleAmmo":
 			return "if Checked: 'BioRifle' will have infinity ammo.";
 
-		//case "bFixPawnNetCode":
-		//	return "If checked: MNAF will replace the pawn class to NetFixedPawn to fix things such as animations.";
-
 		case "DrownDamage":
 			return "Amount of health players lose when they are drowning.";
 
@@ -809,7 +803,6 @@ DefaultProperties
 	bInfinityBioRifleAmmo=True
 	bAllowAltGlitch=True
 	bFadeOutTeamMates=True
-	//bFixPawnNetCode=True
 	bFixMovers=True
 	bAdjustNetPrioritys=True
 

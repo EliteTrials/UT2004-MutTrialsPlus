@@ -2,7 +2,7 @@
 // ShieldGunFix.uc
 // MutNoAutoFire (C) 2006-2009 Eliot van uytfanghe, .:..:. All Rights Reserved.
 //==============================================================================
-Class ShieldGunFix Extends ShieldGunAntiTFA;
+Class ShieldGunFix Extends ShieldGun;
 
 var color ClientWColor, BotRandomColor, LastUsedColorC;
 var bool bColorHasBeenSet, bBotChosenColor;
