@@ -599,7 +599,7 @@ function bool DoJump( bool bUpdating )
 
 /**
  * This parent overwrite, solves the following issues:
- * - Set a LastLandedTime so that we can block dodge cheats, this let's us measure whether a dodge is valid on the server's side.
+ * - Set a LastLandedTime so that we can block dodge cheats, this let's measure whether a dodge is valid on the server's side.
  * - The landing sound was not always played, and because players use this sound to time their next dodge move, we had ensure that it is always being played.
  */
 event Landed( Vector v )
@@ -645,70 +645,6 @@ simulated function PlayDirectionalHit( Vector HitLoc )
 	if( MD != None && MD.bPlayDirectionalHits )
 		super.PlayDirectionalHit(HitLoc);
 }
-
-// Doesn't seem to work!
-// Overwritten to replace weapons given by Volumes etc...
-/*function GiveWeapon( string NewWeapon )
-{
-	local string ShortName;
-
-	ShortName = Mid( NewWeapon, InStr( NewWeapon, "." )+1 );
-	if( ShortName ~= "AssaultRifle" || ShortName ~= "TFAssaultRifle" )
-		NewWeapon = string( Class'AssaultRifleFix' );
-	else if( ShortName ~= "BioRifle" )
-		NewWeapon = string( Class'BioRifleFix' );
-	else if( ShortName ~= "ShieldGun" )
-		NewWeapon = string( Class'ShieldGunFix' );
-	else if( ShortName ~= "DMShieldGun" )
-		NewWeapon = string( Class'DMShieldGunFix' );
-	else if( ShortName ~= "ADShieldGun" )
-		NewWeapon = string( Class'ADShieldGunFix' );
-
-	super.GiveWeapon(NewWeapon);
-}*/
-
-// Doesn't seem to work!
-// Overwritten to replace weapons given by Volumes etc...
-/*function bool AddInventory( inventory NewItem )
-{
-	local string ShortName;
-
-	if( !NewItem.IsA('Weapon') )
-		return super.AddInventory(NewItem);
-
-	ShortName = Mid( NewItem.Name, InStr( NewItem.Name, "." )+1 );
-	if( ShortName ~= "AssaultRifle" || ShortName ~= "TFAssaultRifle" )
-	{
-		NewItem.Destroy();
-		NewItem = Spawn( Class'AssaultRifleFix', Self );
-		return super.AddInventory(NewItem);
-	}
-	else if( ShortName ~= "ShieldGun" )
-	{
-		NewItem.Destroy();
-		NewItem = Spawn( Class'ShieldGunFix', Self );
-		return super.AddInventory(NewItem);
-	}
-	else if( ShortName ~= "DMShieldGun" )
-	{
-		NewItem.Destroy();
-		NewItem = Spawn( Class'DMShieldGunFix', Self );
-		return super.AddInventory(NewItem);
-	}
-	else if( ShortName ~= "ADShieldGun" )
-	{
-		NewItem.Destroy();
-		NewItem = Spawn( Class'ADShieldGunFix', Self );
-		return super.AddInventory(NewItem);
-	}
-	else if( ShortName ~= "BioRifle" )
-	{
-		NewItem.Destroy();
-		NewItem = Spawn( Class'BioRifleFix', Self );
-		return super.AddInventory(NewItem);
-	}
-	else return super.AddInventory(NewItem);
-}*/
 
 // Copy from UnrealPawn, Reason:Remove ClientSwitchToBestWeapon();
 function AddDefaultInventory()

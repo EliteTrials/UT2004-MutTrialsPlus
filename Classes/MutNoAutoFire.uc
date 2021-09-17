@@ -27,6 +27,18 @@ var() globalconfig float SuicideDelay;
 var() globalconfig float SGNetFreq, SGNetPriority, MoverNetPriority;
 var() globalconfig string ConfigCroupName;
 
+var() array<struct sNewInventoryClass{
+	var string ClassName;
+	var class<Inventory> NewClass;
+}> NewInventoryClasses;
+
+var() enum EShieldGunMode{
+	SGM_None,
+	SGM_Default,
+	SGM_DM,
+	SGM_Pink
+} ShieldGunMode;
+
 // Pawn class was replaced to MNAF_Pawn
 var protected bool bReplacedPawnClass;
 var bool bInsaneMap;
@@ -114,6 +126,29 @@ event PostBeginPlay()
 	}
 }
 
+event MatchStarting()
+{
+	local Mutator mut;
+
+	super.MatchStarting();
+	if( ShieldGunMode == EShieldGunMode.SGM_None )
+	{
+		ShieldGunMode = EShieldGunMode.SGM_Default;
+		if( IsPinkMap() )
+		{
+			ShieldGunMode = EShieldGunMode.SGM_Pink;
+		}
+		for( mut = Level.Game.BaseMutator; mut != none; mut = mut.NextMutator )
+		{
+			if( mut.IsA('MutDMShieldGun') )
+			{
+				ShieldGunMode = EShieldGunMode.SGM_DM;
+				break;
+			}
+		}
+	}
+}
+
 final Function string CurrentMap()
 {
 	return string(Outer.Name);
@@ -148,7 +183,7 @@ final Function bool InsaneMap()
 	return False;
 }
 
-Function ModifyPlayer( Pawn Other )
+event ModifyPlayer( Pawn Other )
 {
 	Super.ModifyPlayer(Other);
 
@@ -166,67 +201,49 @@ Function ModifyPlayer( Pawn Other )
 	}
 }
 
-//==============================================================================
-// Replaces the AutoFire ShieldGuns.
-// ShieldGunTypeCL(class)
-//	0 = Normal
-//	1 = DM SHieldGun
-//	2 = Pink ShieldGun(specific for some maps i've made in the past)
-Function string GetInventoryClassOverride( string WeaponIs )
-{
-	local Mutator M;
-	local string MidName;
-
-	// Get class name i.e. ignore the package name
-	MidName = Mid( WeaponIs, InStr( WeaponIs, "." )+1 );
-
-	// Replace assault rifle
-	/*if( MidName ~= "AssaultRifle" || MidName ~= "TFAssaultRifle" )
-		return string( Class'AssaultRifleFix' );*/
-
-	// return if not a shieldgun...
-	if( !IsShieldGun( WeaponIs ) )
-		return WeaponIs;
-
-	// Replace Abaddon's ShieldGun
-	if( MidName ~= "ADShieldGun" )
-		return string( Class'ADShieldGunFix' );
-
-	// These checks will be based on the mutators, since DMShieldGun is added by this function too it wouldn't be available yet and so checking for the sg class is useless
-	if( !bCheckedMuts )
-	{
-		for( M = Level.Game.BaseMutator; M != None; M = M.NextMutator )
-		{
-			if( IsPinkMap() )						// Make sure pink get scanned first, since pinkshield maps also got tfa or smth else.
-				ShieldGunTypeCl = 2;				// Pink ShieldGun
-			else if( M.IsA('TFAEmbed') )
-				ShieldGunTypeCl = 0;				// Normal ShieldGunFix
-			else if( M.IsA('MutDMShieldGun') )
-				ShieldGunTypeCl = 1;				// DM ShieldGun
-			//else ShieldGunTypeCL = 255;			// No Shield found.
-		}
-		bCheckedMuts = True;
-	}
-
-	if( ShieldGunTypeCl == 0 )
-		return string( Class'ShieldGunFix' );
-	else if( ShieldGunTypeCl == 1 )
-		return string( Class'DMShieldGunFix' );
-	else if( ShieldGunTypeCl == 2 )
-		return string( Class'PinkShieldGun' );
-
-	return Super.GetInventoryClassOverride(WeaponIs);
-}
-
-// Check target(pawn) weapon.
-Static Function bool IsShieldGun( string ShieldCl )
+final function class<Inventory> GetNewInventoryClass( string inventoryClassName )
 {
 	local int i;
+	local string realClassName;
 
-	i = InStr( ShieldCl, "." );
-	if( i != -1 )
-		ShieldCl = Mid( ShieldCl, i+1 );
-	return ( ShieldCl ~= "ShieldGun" || ShieldCl ~= "DMShieldGun" || ShieldCl ~= "TFShieldGun" || ShieldCL ~= "MTShieldGun" || ShieldCL ~= "ADShieldGun" );
+	realClassName = Mid( inventoryClassName, InStr( inventoryClassName, "." ) + 1 );
+	for( i = 0; i < NewInventoryClasses.Length; ++ i )
+	{
+		// Log( NewInventoryClasses[i].ClassName @ "==" @ inventoryClassName );
+		if( NewInventoryClasses[i].ClassName ~= inventoryClassName || NewInventoryClasses[i].ClassName ~= realClassName )
+		{
+			// Log( "Overriding class with" @ NewInventoryClasses[i].NewClass );
+			return NewInventoryClasses[i].NewClass;
+		}
+	}
+	return none;
+}
+
+event string GetInventoryClassOverride( string inventoryClassName )
+{
+	local class<Inventory> newInvClass;
+
+	// Get class name i.e. ignore the package name
+	newInvClass = GetNewInventoryClass( inventoryClassName );
+	if( newInvClass == none )
+		return super.GetInventoryClassOverride( inventoryClassName );
+
+	if( newInvClass == class'ShieldGunFix' )
+	{
+		// Log("Overriding a ShieldGun class!");
+		switch( ShieldGunMode )
+		{
+			case EShieldGunMode.SGM_DM:
+				newInvClass = class'DMShieldGunFix';
+				break;
+
+			case EShieldGunMode.SGM_Pink:
+				newInvClass = class'PinkShieldGun';
+				break;
+		}
+	}
+	// Log("Class will be overriden with" @ newInvClass);
+	return string(newInvClass);
 }
 
 Static final Function string MakeColor( color CL )
@@ -415,232 +432,162 @@ Function Mutate( string TypedCommand, PlayerController PC )
 	Super.Mutate(TypedCommand,PC);
 }
 
-Function ReplaceWeaponLocker( WeaponLocker WL )
-{
-	local int i;
-
-	for( i = 0; i < WL.Weapons.Length; ++ i )
-	{
-		if( WL.Weapons[i].WeaponClass == Class'AssaultRifle' )
-		{
-			WL.Weapons[i].WeaponClass = Class'AssaultRifleFix';
-		}
-	}
-}
-
-//==============================================================================
-// Replaces these things.
-//	TFShieldGun
-//	MTShieldGun
-//	DMShieldGun
-//	BioRifle
-//	AssaultRifle
-//	TFAssaultRifle
-// in all the xWeaponBases and all the WeaponLockers
-Function bool CheckReplacement( Actor Other, out byte bSuperRelevant )
+event bool CheckReplacement( Actor other, out byte bSuperRelevant )
 {
 	local MNAFLinkedRep MR;
 	local TeleResetActor TA;
 	local MNAF_PickupHandler PH;
 
-	if( xWeaponBase(Other) != None )
+	if( xWeaponBase(other) != none )
 	{
-		// Use a string check because it never replaced the gun with a class check.
-		// Weird? lol
-		if
-		(
-			string(xWeaponBase(Other).WeaponType) ~= "xWeapons.ShieldGun"
-			||
-			Right( string(xWeaponBase(Other).WeaponType), 11 ) ~= "MTShieldGun"
-			||
-			Right( string(xWeaponBase(Other).WeaponType), 11 ) ~= "TFShieldGun"
-		)
+		if( xWeaponBase(other).WeaponType != none )
 		{
-			xWeaponBase(Other).WeaponType = Class'ShieldGunFix';
-			return True;
+			xWeaponBase(other).WeaponType = class<Weapon>(Level.Game.BaseMutator.GetInventoryClass( string(xWeaponBase(other).WeaponType) ));
 		}
-		else if
-		(
-			xWeaponBase(Other).PowerUp == Class'ShieldGunPickup'
-			||
-			(xWeaponBase(Other).PowerUp != None && xWeaponBase(Other).PowerUp.IsA('TFShieldGunPickup'))
-		)
-		{
-			xWeaponBase(Other).PowerUp = None;
-			xWeaponBase(Other).WeaponType = Class'ShieldGunFix';
-			return True;
-		}
-		else if
-		(
-			string(xWeaponBase(Other).WeaponType) ~= "MutDMShieldGun.DMShieldGun"
-			||
-			string(xWeaponBase(Other).WeaponType) ~= "MutDMShieldGunFix.DMShieldGun"
-		)
-		{
-			xWeaponBase(Other).WeaponType = Class'DMShieldGunFix';
-			return True;
-		}
-		else if( string(xWeaponBase(Other).WeaponType) ~= "AbaddonShield.ADShieldGun" )
-		{
-			xWeaponBase(Other).WeaponType = Class'ADShieldGunFix';
-			return True;
-		}
-		else if
-		(
-			xWeaponBase(Other).PowerUp != None
-			&&
-			xWeaponBase(Other).PowerUp.IsA('ADShieldGunPickUp')
-		)
-		{
-			xWeaponBase(Other).PowerUp = Class'ADShieldGunFixPick';
-			return True;
-		}
-		else if( xWeaponBase(Other).WeaponType == Class'BioRifle' )
-		{
-			if( bReplaceBioRifle )
-				xWeaponBase(Other).WeaponType = Class'BioRifleFix';
-
-			return True;
-		}
-		/*else if( xWeaponBase(Other).WeaponType == Class'AssaultRifle' || Right( string( xWeaponBase(Other).WeaponType ), 14 ) ~= "TFAssaultRifle" )
-		{
-			xWeaponBase(Other).WeaponType = Class'AssaultRifleFix';
-			return True;
-		}
-		else if
-		(
-			xWeaponBase(Other).PowerUp != None
-			&&
-			xWeaponBase(Other).PowerUp.IsA('AssaultRiflePickup')
-		)
-		{
-			xWeaponBase(Other).PowerUp = Class'AssaultRiflePickupFix';
-		}*/
-		return True;
+		// else if( xWeaponBase(other).PowerUp != none )
+		// {
+		// 	xWeaponBase(other).WeaponType = Level.Game.BaseMutator.GetInventoryClass( string(xWeaponBase(other).PowerUp.InventoryType) );
+		// 	xWeaponBase(other).PowerUp = none;
+		// }
+		return true;
 	}
-	/*else if( Other.IsA('WeaponLocker') )
+	else if( WeaponPickup(other) != none )
 	{
-		ReplaceWeaponLocker( WeaponLocker(Other) );
-		return True;
-	}*/
-	else if( Other.IsA('TPWeaponVolume') )
-	{
-		ReplaceVolumeWeapons( Volume(Other) );
-		return True;
+		WeaponPickup(other).InventoryType = Level.Game.BaseMutator.GetInventoryClass( string(WeaponPickup(other).InventoryType) );
 	}
-	else if( BioRifleFix(Other) != None )
+	else if( WeaponLocker(other) != none )
 	{
-		BioRifleFix(Other).bInfinityAmmo = bInfinityBioRifleAmmo;
-		return True;
+		ReplaceWeaponLocker( WeaponLocker(other) );
+		return true;
 	}
-	else if( ShieldGunFix(Other) != None )
+	else if( other.IsA('TPWeaponVolume') )
+	{
+		ReplaceVolumeWeapons( Volume(other) );
+		return true;
+	}
+	else if( BioRifleFix(other) != none )
+	{
+		BioRifleFix(other).bInfinityAmmo = bInfinityBioRifleAmmo;
+		return true;
+	}
+	else if( ShieldGunFix(other) != none )
 	{
 		if( bAdjustNetPrioritys )
 		{
-			Other.NetPriority = SGNetPriority;
-			Other.NetUpdateFrequency = SGNetFreq;
+			other.NetPriority = SGNetPriority;
+			other.NetUpdateFrequency = SGNetFreq;
 		}
 
 		if( bAllowAltGlitch && !bInsaneMap )
-			ShieldGunFix(Other).bAllowAltGlitch = True;
+			ShieldGunFix(other).bAllowAltGlitch = true;
 
-		return True;
+		return true;
 	}
-	else if( PlayerReplicationInfo(Other)!=None && PlayerController(Other.Owner)!=None && MessagingSpectator(Other.Owner)==None )
+	else if( PlayerReplicationInfo(other) != none && PlayerController(other.Owner) != none && MessagingSpectator(other.Owner) == none )
 	{
-		MR = Spawn(Class'MNAFLinkedRep',Other.Owner);
-		MR.NextReplicationInfo = PlayerReplicationInfo(Other).CustomReplicationInfo;
-		PlayerReplicationInfo(Other).CustomReplicationInfo = MR;
+		MR = Spawn(Class'MNAFLinkedRep',other.Owner);
+		MR.NextReplicationInfo = PlayerReplicationInfo(other).CustomReplicationInfo;
+		PlayerReplicationInfo(other).CustomReplicationInfo = MR;
 		MR.bFadeOutTeamMates = bFadeOutTeamMates;
-		MR.MNAF = Self;
-		return True;
+		MR.MNAF = self;
+		return true;
 	}
-	else if( MNAF_Pawn(Other) != None )
+	else if( MNAF_Pawn(other) != none )
 	{
-		MNAF_Pawn(Other).DrownDamage = DrownDamage;
-		return True;
+		MNAF_Pawn(other).DrownDamage = DrownDamage;
+		return true;
 	}
 	// Fixes the monsters to stop teleporting to the player spawn(important fix)
-	else if( Monster(Other) != None )	// XMonController was written by .:..:
+	else if( Monster(other) != none )	// XMonController was written by .:..:
 	{
-		if( Monster(Other).ControllerClass == Class'Monstercontroller' )
-			Monster(Other).ControllerClass = Class'XMonController';
+		if( Monster(other).ControllerClass == Class'Monstercontroller' )
+			Monster(other).ControllerClass = Class'XMonController';
 
-		return True;
+		return true;
 	}
 	// Fixes teleporters to reset when a new round starts(important fix)
-	else if( Teleporter(Other) != None )
+	else if( Teleporter(other) != none )
 	{
 		// Only on startup to avoid editing spawned teleporters later ingame.
 		if( Level.bStartUp  )
 		{
 			TA = Spawn( Class'TeleResetActor' );
-			TA.TeleActor = Teleporter(Other);
+			TA.TeleActor = Teleporter(other);
 			TA.bWasEnabled = TA.TeleActor.bEnabled;
 		}
-		return True;
+		return true;
 	}
-	else if( Pickup(Other) != None )
+	else if( Pickup(other) != none )
 	{
 		if( bFastRespawnItems )
 		{
-			if( TournamentPickup(Other) != None )
+			if( TournamentPickup(other) != none )
 			{
 			 	// Mega fast respawning pickups hack
 			 	if( !bNoCustomPickupsRespawnCode )
 			 	{
-				 	PH = Spawn( Class'MNAF_PickupHandler', Other,, Other.Location, Other.Rotation );
-			 		if( PH != None )
+				 	PH = Spawn( Class'MNAF_PickupHandler', other,, other.Location, other.Rotation );
+			 		if( PH != none )
 			 		{
-			 			PH.myPickup = TournamentPickup(Other);
+			 			PH.myPickup = TournamentPickup(other);
 
-			 			Other.SetCollision( False, False, False );
-			 			PH.SetCollisionSize( Other.CollisionRadius, Other.CollisionHeight );
+			 			other.SetCollision( false, false, false );
+			 			PH.SetCollisionSize( other.CollisionRadius, other.CollisionHeight );
 			 		}
 			 	}
 
 				// Force everything to give max Health
-				if( TournamentHealth(Other) != None )
+				if( TournamentHealth(other) != none )
 				{
-		 			if( TournamentHealth(Other).bSuperHeal || Other.IsA('SuperHealthPack') )
-						TournamentHealth(Other).Default.HealingAmount = Class'xPawn'.Default.SuperHealthMax;
-					else TournamentHealth(Other).Default.HealingAmount = Class'xPawn'.Default.HealthMax;
-					return True;
+		 			if( TournamentHealth(other).bSuperHeal || other.IsA('SuperHealthPack') )
+						TournamentHealth(other).Default.HealingAmount = Class'xPawn'.Default.SuperHealthMax;
+					else TournamentHealth(other).Default.HealingAmount = Class'xPawn'.Default.HealthMax;
+					return true;
 				}
-		 		return True;
+		 		return true;
 			}
-			else if( xPickupBase(Other) != None )
+			else if( xPickupBase(other) != none )
 			{
 				// We don't want to wait a minute for our pickups zzz...
-				xPickupBase(Other).bDelayedSpawn = False;
-				return True;
+				xPickupBase(other).bDelayedSpawn = false;
+				return true;
 			}
 		}
-		return True;
+		return true;
 	}
-	else if( Mover(Other) != None )
+	else if( Mover(other) != none )
 	{
 		if( bFixMovers )
 		{
-			if( Mover(Other).MoverEncroachType == ME_ReturnWhenEncroach )		// Fix's the movers from stopping on encroach, old bug from 2005 xD
-				Mover(Other).MoverEncroachType = ME_IgnoreWhenEncroach;
+			if( Mover(other).MoverEncroachType == ME_ReturnWhenEncroach )		// Fix's the movers from stopping on encroach, old bug from 2005 xD
+				Mover(other).MoverEncroachType = ME_IgnoreWhenEncroach;
 
 			if( bAdjustNetPrioritys )
-				Mover(Other).NetPriority = MoverNetPriority;	// IDK if that's of any help...
+				Mover(other).NetPriority = MoverNetPriority;	// IDK if that's of any help...
 		}
-		return True;
+		return true;
 	}
 	// TFAMap.u is no longer relevant, we should make sure all such instances are removed from the game.
 	// TFAEmbed does also not call the NextMutator events which may break mutators that are dependant on such events.
-	else if( Other.IsA('TFAEmbed') || Other.IsA('MayanTFAEmbed') )
+	else if( other.IsA('TFAEmbed') || other.IsA('MayanTFAEmbed') )
 	{
 		return false;
 	}
-	return Super.CheckReplacement(Other,bSuperRelevant);
+	return super.CheckReplacement(other,bSuperRelevant);
+}
+
+final function ReplaceWeaponLocker( WeaponLocker weaponLocker )
+{
+	local int i;
+
+	for( i = 0; i < weaponLocker.Weapons.Length; ++ i )
+	{
+		weaponLocker.Weapons[i].WeaponClass = class<Weapon>(Level.Game.BaseMutator.GetInventoryClass( string(weaponLocker.Weapons[i].WeaponClass) ));
+	}
 }
 
 // Evil hack to replace unloaded volumes.
-Function ReplaceVolumeWeapons( Volume Other )
+final function ReplaceVolumeWeapons( Volume Other )
 {
 	local string S,SS;
 	local array<string> SL;
@@ -737,7 +684,7 @@ Function ReplaceVolumeWeapons( Volume Other )
 	}
 }*/
 
-Function GetServerDetails( out GameInfo.ServerResponseLine ServerState )
+function GetServerDetails( out GameInfo.ServerResponseLine ServerState )
 {
 	local int i;
 
@@ -754,9 +701,9 @@ Function GetServerDetails( out GameInfo.ServerResponseLine ServerState )
 
 //==============================================================================
 // AddMutatorSettings.
-Static Function FillPlayInfo( PlayInfo Info )
+static function FillPlayInfo( PlayInfo Info )
 {
-	Super.FillPlayInfo(Info);
+	super.FillPlayInfo(Info);
 	Info.AddSetting( Default.RulesGroup, "bFastRespawnItems", "Respawn Pickups Rapidly", 0, 1, "Check" );
 	Info.AddSetting( Default.RulesGroup, "bInfinityBioRifleAmmo", "Infinity Bio Rifle Ammo", 0, 1, "Check" );
 	//Info.AddSetting( Default.RulesGroup, "bFixPawnNetCode", "Replace Pawn", 0, 1, "Check" );
@@ -767,7 +714,7 @@ Static Function FillPlayInfo( PlayInfo Info )
 }
 //==============================================================================
 // Display Description.
-Static Event string GetDescriptionText( string PropName )
+static event string GetDescriptionText( string PropName )
 {
 	switch( PropName )
 	{
@@ -789,27 +736,37 @@ Static Event string GetDescriptionText( string PropName )
 		case "bAdjustNetPrioritys":
 			return "If Checked: Net Priority of the ShieldGun and Movers will be adjusted to make the server pay more attention to those, but less to the other kind of actors.";
 	}
-	return Super.GetDescriptionText(PropName);
+	return super.GetDescriptionText(PropName);
 }
 
-DefaultProperties
+defaultproperties
 {
 	FriendlyName="Trials Plus"
 	Description="Replaces those annoying ShieldGun's that auto fire when coming near a player of your team, Note:Replaces the pawn class if it is xPawn or UTComp_Pawn, will not function properly if other mutators replacing the pawn class are running!. Created by Eliot/.:..: 2006-2009"
 	RulesGroup="TrialsPlus"
 	Group="TrialsPlus"
 
-	bFastRespawnItems=True
-	bInfinityBioRifleAmmo=True
-	bAllowAltGlitch=True
-	bFadeOutTeamMates=True
-	bFixMovers=True
-	bAdjustNetPrioritys=True
+	bFastRespawnItems=true
+	bInfinityBioRifleAmmo=true
+	bAllowAltGlitch=true
+	bFadeOutTeamMates=true
+	bFixMovers=true
+	bAdjustNetPrioritys=true
 
 	SuicideDelay=1.5
 	DrownDamage=5
 
-	bAddToServerPackages=True
+	NewInventoryClasses(0)=(ClassName="XWeapons.ShieldGun",NewClass=class'ShieldGunFix')
+	NewInventoryClasses(1)=(ClassName="MutDMShieldGun.DMShieldGun",NewClass=class'DMShieldGunFix')
+	NewInventoryClasses(2)=(ClassName="MutDMShieldGunFix.DMShieldGun",NewClass=class'DMShieldGunFix')
+	NewInventoryClasses(3)=(ClassName="AbaddonShield.ADShieldGun",NewClass=class'ADShieldGunFix')
+	NewInventoryClasses(4)=(ClassName="MayanShieldGun",NewClass=class'PinkShieldGun')
+	NewInventoryClasses(5)=(ClassName="TFShieldGun",NewClass=class'ShieldGunFix')
+	NewInventoryClasses(6)=(ClassName="MTShieldGun",NewClass=class'ShieldGunFix')
+	NewInventoryClasses(7)=(ClassName="XWeapons.BioRifle",NewClass=class'BioRifleFix')
+	NewInventoryClasses(8)=(ClassName="XWeapons.AssaultRifle",NewClass=class'AssaultRifleFix')
+
+	bAddToServerPackages=true
 	ConfigCroupName="MNAF_Save_Data"
 
 	C_CmdPublic=(R=0,G=255,B=0,A=255)
