@@ -1,8 +1,8 @@
-MutTrialsPlus formely known as MutNoAutoFire
-=====
+# MutTrialsPlus formely known as MutNoAutoFire
+
 Copyright 2006-2009 Eliot van Uytfanghe
 
-MutTrialsPlus is a advanced mutator designed to improve the quality of trials and UT2004 in general. 
+MutTrialsPlus is an advanced mutator designed to improve the quality of trials and UT2004 in general. 
 This mutator will replace the standard ShieldGun with a Trials-Friendly ShieldGun, no pushing team mates, no sound, or animation bugs etc!
 
 A ShieldGun customization menu is available as well accessable through the console command "ShieldMenu"
@@ -15,4 +15,6 @@ Trial issues fixed:
  * Fade out nearby players(See everything!)
  * No player blocking, collision is disabled for players
 
-The mutator fixes about 20 or more bugs!
+The mutator fixes about 20 or more bugs:
+
+TODO...
